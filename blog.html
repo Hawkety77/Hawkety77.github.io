@@ -28,6 +28,9 @@
 				background-color: white; /* Set the background color to white */
 				display: inline-block; /* Ensure it doesn't create a line break */
 			}
+			pre code {
+      color: navy; /* Change this to the desired color */
+    }
 		</style>
 	</head>
 	<body class="is-preload">
@@ -68,13 +71,379 @@
 							<section class="post">
 								<header class="major">
 								<div class="white-space"></div>
-						        <span class="date">November 2023</span>
-								<h3>Behind the Listings: Analyzing the Hidden Forces of Zillow Home Prices</h3>
+						        <span class="date">December 2023</span>
+								<h3>Exploring Utah County Housing Data</h3>
 								<!--<div class="image main"><img src="images/me.jpg" alt="" /></div>-->
-								<div style="text-align: left;">Well Mom, school isn't going to last forever, and Amy and I are gonna have to move out of our 100 year old basement
-									apartment sometime. The pandemic wasn't very nice to home prices, and it was even meaner to mortgage rates. Affording a home in 2023 looks impossible 
-									unless you have half a million dollars sitting around. In this analysis, we're going to look at 500+ house listings in Utah County from Zillow to 
-									determine the optimal housing choices to maximize value for Amy and I.
+								<div style="text-align: left;">Alright, Mom, this is one of the cooler parts about working with data. 
+									We’re gonna try some different ways to visualize our data to hopefully gain some insight into how Amy 
+									and I should approach the housing market when we buy.
+									<br>
+									<br>
+									Some more specific questions we will look to answer are these:
+									<br>
+									<br>
+									
+									- What regions in Utah County are generally more expensive to live in?<br>
+									- Are town houses a popular option in Utah County?<br>
+									- How does the house type affect its price?<br>
+									- What does the price distribution look like for all housing?<br>
+									- Can we predict a house price based on some of its features?<br>
+									<br>
+									 
+									Lets hop in.<br><br>
+									
+									<h3>What Regions in Utah County are generally more expensive to live in?</h3>
+									
+									Instead of averaging the house prices of each city and comparing, we’re gonna use a map for this one. 
+									This might help us see some spatial trends that we wouldn’t see in other charts.<br>
+									<br>
+									
+									<pre><code>import pandas as pd
+import plotly.express as px
+import xgboost as xgb
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import make_scorer
+import numpy as np
+
+df = pd.read_csv('zillow.csv')
+
+fig = px.scatter_mapbox(
+    df,
+    lat='latitude',
+    lon='longitude',
+    size = 'price', 
+    color = 'homeType'
+)
+fig.update_layout(mapbox_style="carto-positron")
+fig.show()</code></pre>
+									<div class="image main"><img src="images/plot1.png" alt="" /></div>
+
+									The bigger the dot size, the more expensive the house is. Alpine area, Saratoga Springs lake houses, 
+									and Woodland Hills areas all look expensive. Maybe we can move there later in life. Let’s also look at 
+									the average house prices of each city to supplement this map we’ve created.<br>
+									<br>
+									
+									<pre><code>df_avg_price_per_city = df.groupby('city').median(numeric_only = True).reset_index().sort_values('price', ascending = False)
+fig = px.bar(df_avg_price_per_city, x = 'city', y = 'price')
+fig.show()</code></pre>
+									<div class="image main"><img src="images/plot2.png" alt="" /></div>
+									
+									It’s interesting that Draper, Alpine, and Woodland Hills are all considerably more expensive than the other 
+									cities. Looks like we won’t be moving to any of those cities.<br>
+									<br>
+									
+									<h3>Are town houses a popular option in Utah County?</h3>
+									
+									For this one, we will simply make a pie chart. Fun fact – Though pie charts can be a pretty way to visualize data, 
+									there are often more practical and useful ways to visualize your data, especially if you have more than two or three 
+									groups.<br>
+									<br>
+									
+									<pre><code>df_homeType = df.value_counts('homeType').reset_index().rename(columns = {0: 'Count'})
+
+fig = px.pie(
+	df_homeType,
+	names='homeType',
+	values='Count'
+	)
+
+fig.show()</code></pre>
+									<div class="image main"><img src="images/plot2-1.png" alt="" /></div>
+									
+									We have no way of telling if they are growing or declining in popularity, but town houses make up nearly 1/5th of 
+									the homes sold today.<br>
+									<br>
+									
+									<h3>How does house type affect its price?</h3>
+									We’re gonna make a scatter plot here, so we can visualize the price of a home depending on the square footage. This 
+									might help make our comparison more even. We’ll even throw in a regression line for each house type.<br>
+									<br>
+									
+									<pre><code>fig = px.scatter(df[df['homeType'].isin(['SINGLE_FAMILY', 'TOWNHOUSE', 'CONDO'])], 
+				'livingArea', 
+				'price', 
+				color = 'homeType', 
+				trendline= 'lowess')
+fig.update_xaxes(range = [0, 4000])
+fig.update_yaxes(range = [0, 1000000])
+fig.update_traces(
+	line=dict(width=3), 
+	selector=dict(type='scatter', mode='lines')
+)
+fig.show()</code></pre>
+									<div class="image main"><img src="images/plot3.png" alt="" /></div>
+									
+									Looking at areas with sufficient data points, condos appear to be the cheapest, followed by town homes, and then 
+									single homes.<br>
+									<br>
+									
+									<h3>What does the price distribution look like for all housing?</h3>
+									
+									Being a Statistics major, I like talking about distributions. We’re gonna make a histogram that shows us the 
+									distribution of house prices in Utah County.<br>
+									<br>
+									
+									<pre><code>fig = px.histogram(df[df['price'] < 2000000], x = 'price')
+fig.show()</code></pre>
+									<div class="image main"><img src="images/plot4.png" alt="" /></div>
+									
+									Yikes! Most houses appear to be between $400,000 and $600,000. <br>
+									<br>
+									
+									<h3>Can we predict a house price based on some of its features?</h3>
+									
+									This part is going to involve a bit of machine learning. Basically, we are going to show a mathematical 
+									algorithm what a bunch of house listings look like, and then we will check to see if it can pick up on any 
+									patterns that will allow it to predict the price of other houses in Utah County. I can’t explain in detail how 
+									it works here, but I will provide the code for people interested.<br>
+									<br>
+									
+									<pre><code># Prepare the data frame for a Boosted Tree Model
+one_hot_encoded1 = pd.get_dummies(df['homeType'])
+one_hot_encoded1.drop(columns = ['SINGLE_FAMILY'], inplace = True)
+one_hot_encoded = pd.get_dummies(df['city'])
+one_hot_encoded.drop(columns = ['Saratoga Springs'], inplace = True)
+df_prepared = pd.concat([df, one_hot_encoded1], axis=1)
+df_prepared = pd.concat([df_prepared, one_hot_encoded], axis=1)
+df_prepared = df_prepared.drop(columns = ['city', 
+											'homeType', 
+											'priceReduction', 
+											'zipcode', 
+											'latitude', 
+											'longitude', 
+											'30_year_mortgage', 
+											'daysOnZillow'])
+df_prepared = df_prepared[-df_prepared['livingArea'].isna()]
+df_prepared = df_prepared[df_prepared['price'] < 1500000]
+
+# Split the data and tune hyperparameters
+X_train, X_test, y_train, y_test = train_test_split(df_prepared.drop(columns = ['price']), df_prepared['price'], test_size=0.2, random_state=42)
+
+xgb_model = xgb.XGBRegressor()
+
+param_grid = {
+	'max_depth': [3, 5, 7],
+	'learning_rate': [0.01, 0.1, 0.2],
+	'n_estimators': [50, 100, 200]
+}
+
+def MAPE(y_true, y_pred):
+	absolute_percentage_error = np.abs((y_true - y_pred) / y_true)
+	weight = 1 + np.exp(-np.abs(y_true))
+	weighted_error = absolute_percentage_error * weight
+	return np.mean(weighted_error)
+
+mape_score = make_scorer(MAPE, greater_is_better=False)
+
+grid_search = GridSearchCV(xgb_model, param_grid, scoring = mape_score, cv = 5)
+
+grid_result = grid_search.fit(X_train, y_train)
+
+# Set best hyperparameters to the model
+best_model = grid_result.best_estimator_
+
+# Make predictions on the test set
+y_pred = best_model.predict(X_test)
+
+predictions = pd.DataFrame({'Actual': y_test, 
+							'Prediction': y_pred}).astype(int)
+
+# Plot the Figure							
+fig = px.line(predictions, x = 'Prediction', y = 'Prediction')
+fig.add_scatter(x=predictions['Prediction'], y=predictions['Actual'], mode='markers')
+fig.update_layout(
+	yaxis_title_text='Actual', 
+	showlegend=False
+)
+fig.show()</code></pre>
+									<div class="image main"><img src="images/plot5.png" alt="" /></div>
+									
+									This is a graph is showing how well our model is predicting house prices. Our X value is what we predicted the 
+									house price to be, and the y value is what the actual price was. If we predicted perfectly, we would expect those 
+									dots to be right on that line. The further they are from the line, the worse we did.<br>
+									<br>
+									
+									<h3>Primary Takeaways</h3>
+									
+									After this analysis, it’s easy to rule out some possibilities for our first property like living in Alpine or 
+									having lots of living space. On the bright side though, we know that looking into town homes might be a good way 
+									to maximize space on a budget. And lucky for us, there are plenty of them on the market!<br>
+									<br>
+									
+									As we look ahead, we’ll probably have to revisit this analysis in the future to reassess our options and make 
+									well-informed decisions in a housing market that is always changing. Here's to staying adaptable and making wise 
+									choices in the face of the housing market's fluctuations!									
+								</div>
+							</section>
+							<section class="post">
+								<header class="major">
+								<div class="white-space"></div>
+						        <span class="date">November 2023</span>
+								<h3>Digging for Utah County Housing Data (Python & API’s)</h3>
+								<!--<div class="image main"><img src="images/me.jpg" alt="" /></div>-->
+								<div style="text-align: left;">
+
+									Well Mom, school isn't going to last forever, and Amy and I are going to have to move out of our 100-year-old
+									basement apartment sometime. The pandemic wasn't very nice to home prices, and it was even meaner to mortgage 
+									rates. Affording a home in 2023 looks impossible unless you have half a million dollars sitting around. Considering 
+									this, I want to know what the housing market looks like now: almost 3 years after the commencement of the pandemic. 
+									In this blog post, we’ll focus on getting hands on and cleaning data that would answer that question.
+									<br>
+									<br>
+									<h3>Collecting The Data</h3>
+									
+									After looking through the internet on how we could get the most up to date data on house listings, 
+									I found a place that would give us current data on house listings from Zillow. This data, however, isn’t 
+									just a table we download from the internet, but it actually comes from what’s called an API. 
+									<br>
+									<br>
+									
+									Remember the last time we ate at Texas Roadhouse, and you ordered a chicken entrée that the waiter brought 
+									you a few minutes later? You weren’t thinking about how the meal was made. You just told the waiter what you 
+									wanted, and they brought it to you. Like a waiter, an API is like a middleman that we tell what we want. APIs 
+									allow us to interact data that might be complicated to retrieve otherwise.
+									<br>
+									<br>
+
+									Here's some code below that I wrote to tell the Zillow API that I want data for 20 pages of listings in the 
+									Utah County area. If you’re comfortable with Python, keep reading. Mom, you can skip to the part that says, 
+									“Scraping an Interest Rate.”
+									<br>
+									<br>
+									<pre><code>import requests
+import pandas as pd
+import time
+
+url = "https://zillow56.p.rapidapi.com/search"
+
+with open('api.txt', 'r') as file:
+    api_key = file.read()
+
+headers = {
+	"X-RapidAPI-Key": api_key,
+	"X-RapidAPI-Host": "zillow56.p.rapidapi.com"
+}
+
+lst_1 = []
+
+for page in range(1, 21):
+    querystring = {"location":"Utah County, UT", 
+                "sortSelection":"days", 
+                "page":f"{page}"}
+
+    response = requests.get(url, headers=headers, params=querystring)
+
+    data = response.json()
+    df__ = pd.json_normalize(data['results'])
+    lst_1.append(df__)
+    time.sleep(2)
+
+df.orig = pd.concat(lst_1)</code></pre>
+
+									To interact with the API, we’re going to use the requests library. We’ll also need pandas to store the data, 
+									and the time library so we don’t overwhelm the API with too many requests per second.
+									<br>
+									<br>
+
+									We start by saving our API URL to an object, and then saving our API key to another object. The documentation 
+									for the API told us what headers we needed to make a successful request, so we saved those to a dictionary called 
+									‘headers’.
+									<br>
+									<br>
+
+									We start a for loop so that we can iterate through each page of data on the API. The API documentation also told us 
+									how to query the information that we are interested in, so we specified the location, the way we want the data to be 
+									sorted, and the page number to another dictionary called ‘querystring’
+									<br>
+									<br>
+									
+									At this point, we’re ready to make the request using the requests.get() function. We pull the data off of the 
+									response with .json() and then normalize it to a pandas data frame. 
+									<br>
+									<br>
+
+									Because the API documentation indicates that requests will be denied if we make more than one request per second, 
+									we include in our for loop the time.sleep function to pause our code for 2 seconds before continuing to run.
+									<br>
+									<br>
+
+									By the end of it, we concatenate each data frame from our for loop into one grand data frame with 20 pages of listings! 
+									<br>
+									<br>
+									<h3>Scraping an Interest Rate</h3>
+									
+									Amy and I probably won’t be able to afford a home without a mortgage payment, so we’re interested to know 
+									what most people’s mortgage rates are right now. Instead of looking up the current average rate every time we 
+									refresh this data, we will automate the whole process!
+									<br>
+									<br>
+									
+									Mom, all you need to know is that I wrote code that takes control of my internet browser and navigates to a 
+									website that displays the current rate. Go ahead and skip to the section called “Cleaning the Data.” Python people, 
+									feel free to see what my code looks like.
+									<br>
+									<br>
+									<pre><code>from selenium import webdriver
+from selenium.webdriver.chrome.service import Service as ChromeService
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+
+url = 'https://www.usbank.com/home-loans/mortgage/mortgage-rates/utah.html'
+
+driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
+driver.get(url)
+
+element = driver.find_elements(By.XPATH, '/html/body/div[2]/div/div/div/div[4]/div/div[3]/section/div/div/div/div/div/div/section/div/div/div/div/div/div[1]/div[2]/span[1]')
+
+todays_30_year_rate = element[0].text</code></pre>
+									This section of code in itself deserves an entire blog post. The 10 second version of what you need to know here is 
+									that the python library “selenium” is amazing for navigating the internet automatically, especially when the webpage 
+									content is dynamic. 
+									<br>
+									<br>
+									<h3>Cleaning the Data</h3>
+									
+									Now that we’ve got our data, we’ve got to clean it. Maybe that entrée from Texas Roadhouse you ordered had some 
+									olives on it, ew. You’re not gonna eat those, are you? You’re gonna take them off and push them to the side of the 
+									plate so you can eat all the good stuff. We need to do the same thing with our data. There is a lot of good information 
+									about each house like how much it costs, or how many bathrooms are in it, but there is also a lot of information that 
+									we’re not interested in like whether the listing is sponsored or not on Zillow.
+									<br>
+									<br>
+									Mom, you can go ahead and skip again to “Ethical Considerations”. Everyone else, here we go.
+									<br>
+									<br>
+									<pre><code>df = df_orig[['price', 
+'bathrooms', 
+'bedrooms', 
+'city', 
+'homeType', 
+'livingArea', 
+'zipcode', 
+'priceReduction', 
+'daysOnZillow', 
+'latitude', 
+'longitude']]
+df = df[~df['homeType'].isin(['LOT', 'MANUFACTURED', 'MULTI_FAMILY'])]</code></pre>
+									
+									This last part is pretty self-explanatory. We ended up removing the home types “lot”, “Manufactured”, and 
+									“Multi Family” because we’re interested in looking at home prices, not apartments or land. 
+									<br>
+									<br>
+									<h3>Ethical Considerations</h3>
+									
+									Just because you can find information online doesn’t mean that it’s free to use. Because web scraping hasn’t 
+									been around for super long, policy and ethics are still being developed, so the line between appropriate and 
+									inappropriate use of online data is somewhat blurry. Luckily for us, we are using an API with a subscription, 
+									and we’re scraping one very public number from another website, so we’re safe to assume that we aren’t stepping 
+									on anyone’s toes.
+									<br>
+									<br>
+									Well, that’s it! We’ve got our data! We’ll spend another blog post looking into the data to see what cool things 
+									we can find. Chao.
+									
+									
 							<section class="post">
 								<header class="major">
 								<div class="white-space"></div>
